@@ -21,21 +21,28 @@ function getStreamScore(stream: {
   quality?: string;
   groupTitle?: string;
 }) {
-  const text = `${stream.name ?? ""} ${stream.quality ?? ""} ${stream.groupTitle ?? ""}`
-    .toLowerCase();
+  const text =
+    `${stream.name ?? ""} ${stream.quality ?? ""} ${stream.groupTitle ?? ""}`.toLowerCase();
 
   if (text.includes("4k") || text.includes("uhd")) return 100;
-  if (text.includes("1080") || text.includes("fhd") || text.includes("full hd")) return 80;
+  if (text.includes("1080") || text.includes("fhd") || text.includes("full hd"))
+    return 80;
   if (text.includes("hdr")) return 70;
   if (text.includes("720") || text.includes("hd")) return 50;
   return 10;
 }
 
 function getBestDefaultStreamUrl(
-  streams: Array<{ streamUrl: string; name?: string; quality?: string; groupTitle?: string }>,
+  streams: Array<{
+    streamUrl: string;
+    name?: string;
+    quality?: string;
+    groupTitle?: string;
+  }>,
 ) {
   if (!streams.length) return "";
-  return [...streams].sort((a, b) => getStreamScore(b) - getStreamScore(a))[0].streamUrl;
+  return [...streams].sort((a, b) => getStreamScore(b) - getStreamScore(a))[0]
+    .streamUrl;
 }
 
 export function PlayerModal({ item, open, onClose }: PlayerModalProps) {
