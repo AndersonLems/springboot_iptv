@@ -1,7 +1,9 @@
-import { Play, Info } from 'lucide-react';
-import type { HeroContent, MediaItem } from '@/types/media';
-import { Button } from '@/components/ui/button';
-import heroBackdrop from '@/assets/hero-backdrop.jpg';
+import { Play, Info } from "lucide-react";
+import type { HeroContent, MediaItem } from "@/types/media";
+import { catalogService } from "@/services/catalog";
+
+import { Button } from "@/components/ui/button";
+import heroBackdrop from "@/assets/hero-backdrop.jpg";
 
 interface HeroBannerProps {
   hero: HeroContent;
@@ -35,10 +37,15 @@ export function HeroBanner({ hero, onPlay }: HeroBannerProps) {
         </h1>
         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-4">
           {item.year && <span>{item.year}</span>}
-          {item.rating && <span className="text-primary font-semibold">★ {item.rating}</span>}
+          {item.rating && (
+            <span className="text-primary font-semibold">★ {item.rating}</span>
+          )}
           {item.duration && <span>{item.duration}</span>}
-          {item.genres?.map(g => (
-            <span key={g} className="px-2 py-0.5 rounded bg-secondary text-secondary-foreground text-xs">
+          {item.genres?.map((g) => (
+            <span
+              key={g}
+              className="px-2 py-0.5 rounded bg-secondary text-secondary-foreground text-xs"
+            >
               {g}
             </span>
           ))}
@@ -47,7 +54,11 @@ export function HeroBanner({ hero, onPlay }: HeroBannerProps) {
           {item.description}
         </p>
         <div className="flex gap-3">
-          <Button onClick={() => onPlay(item)} size="lg" className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90">
+          <Button
+            onClick={() => onPlay(item)}
+            size="lg"
+            className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+          >
             <Play className="h-5 w-5 fill-current" /> Assistir
           </Button>
           <Button variant="secondary" size="lg" className="gap-2">

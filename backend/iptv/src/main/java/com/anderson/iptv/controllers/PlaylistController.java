@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.anderson.iptv.model.Channel;
 import com.anderson.iptv.model.Playlist;
 import com.anderson.iptv.services.PlaylistService;
+import com.anderson.iptv.model.CategoryGroup;
+
 
 import lombok.RequiredArgsConstructor;
 import reactor.core.publisher.Mono;
@@ -36,6 +38,12 @@ public class PlaylistController {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
+    @GetMapping("/channels/all")
+public Mono<List<Channel>> allChannels() {
+    return Mono.fromCallable(() -> service.getPlaylist().getChannels())
+            .subscribeOn(Schedulers.boundedElastic());
+}
+
     @GetMapping("/groups")
     public Mono<List<String>> groups() {
         return Mono.fromCallable(service::getGroups)
@@ -59,4 +67,30 @@ public class PlaylistController {
         return Mono.fromCallable(service::forceRefresh)
                 .subscribeOn(Schedulers.boundedElastic());
     }
+    @GetMapping("/categories")
+    public Mono<List<CategoryGroup>> categories() {
+    return Mono.fromCallable(service::getGroupedCategories)
+            .subscribeOn(Schedulers.boundedElastic());
+}
+
+    @GetMapping("/categories/{parent}")
+    public Mono<List<Channel>> byParentCategory(@PathVariable String parent) {
+        return Mono.fromCallable(() -> service.getChannelsByCategory(parent, null))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    @GetMapping("/categories/{parent}/{sub}")
+    public Mono<List<Channel>> bySubCategory(@PathVariable String parent,
+                                              @PathVariable String sub) {
+        return Mono.fromCallable(() -> service.getChannelsByCategory(parent, sub))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
+    @GetMapping("/categories/{parent}/search")
+    public Mono<List<Channel>> searchInCategory(@PathVariable String parent,
+                                               @RequestParam("q") String query) {
+        return Mono.fromCallable(() -> service.searchChannelsByCategory(parent, query))
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
 }

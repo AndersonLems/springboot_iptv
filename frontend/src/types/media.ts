@@ -1,4 +1,12 @@
-export type MediaType = 'movie' | 'series' | 'channel';
+export type MediaType = "movie" | "series" | "channel";
+
+export interface MediaStreamOption {
+  name?: string;
+  streamUrl: string;
+  groupTitle?: string;
+  logoUrl?: string;
+  quality?: string;
+}
 
 export interface MediaItem {
   id: string;
@@ -6,6 +14,7 @@ export interface MediaItem {
   cover: string;
   backdrop?: string;
   streamUrl: string;
+  streamOptions?: MediaStreamOption[];
   type: MediaType;
   description?: string;
   year?: number;
