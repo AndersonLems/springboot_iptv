@@ -1,9 +1,36 @@
 version: "3.8"
 
 services:
+  app:
+    build:
+      context: ./iptv
+    container_name: iptv_app
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-iptv}
+      APP_TMDB_BASE_URL: https://api.themoviedb.org/3
+      APP_TMDB_API_KEY: ${TMDB_API_KEY}
+      APP_TMDB_LANGUAGE: pt-BR
+      APP_TMDB_REGION: BR
+      APP_M3U_HOST: ${M3U_HOST}
+      APP_M3U_USERNAME: ${M3U_USERNAME}
+      APP_M3U_PASSWORD: ${M3U_PASSWORD}
+      APP_EPG_URL: ${EPG_URL}
+      APP_CACHE_WARMUP_ENABLED: ${APP_CACHE_WARMUP_ENABLED:-true}
+    depends_on:
+      - redis
+
   redis:
     image: redis:alpine
     container_name: redis_iptv
-    command: redis-server --requirepass iptv
+    command: redis-server --requirepass ${REDIS_PASSWORD:-iptv}
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
