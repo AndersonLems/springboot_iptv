@@ -30,7 +30,13 @@ function applyTheme(theme: Theme) {
 }
 
 export function useTheme() {
-  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
+  const [theme, setThemeState] = useState<Theme>('dark');
+
+  useEffect(() => {
+    const initial = getInitialTheme();
+    setThemeState(initial);
+    applyTheme(initial);
+  }, []);
 
   useEffect(() => {
     applyTheme(theme);

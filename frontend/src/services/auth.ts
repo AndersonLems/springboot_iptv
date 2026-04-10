@@ -1,8 +1,4 @@
 import type { AuthSession } from '@/types/media';
-import { mockUser } from '@/data/mocks';
-// import { apiClient } from './api/client';
-// import { API_ENDPOINTS } from './api/endpoints';
-
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 export const authService = {
@@ -11,16 +7,24 @@ export const authService = {
    * Implementação atual: mock local.
    */
   async login(username: string, password: string): Promise<AuthSession> {
-    // Implementação atual com mock
-    await delay(500);
-    if (username === 'admin' && password === 'admin') {
-      return { user: mockUser, token: 'mock-token-xyz-123' };
+    await delay(200);
+    if (username !== 'admin' || password !== 'admin') {
+      throw new Error('Credenciais invalidas');
     }
-    throw new Error('Credenciais inválidas');
 
-    // Futuramente:
-    // const response = await apiClient.post<AuthSession>(API_ENDPOINTS.login, { username, password });
-    // return response;
+    const session: AuthSession = {
+      token: 'mock-token',
+      user: {
+        id: username,
+        username,
+        displayName: username,
+        avatar: '',
+        email: '',
+      },
+    };
+
+    localStorage.setItem('stream_auth_session', JSON.stringify(session));
+    return session;
   },
 
   /**
@@ -30,8 +34,5 @@ export const authService = {
   async logout(): Promise<void> {
     // Implementação atual com mock
     await delay(200);
-
-    // Futuramente:
-    // await apiClient.post(API_ENDPOINTS.logout);
   },
 };

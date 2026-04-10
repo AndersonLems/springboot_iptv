@@ -29,6 +29,10 @@ public class TmdbService {
         return client.trendingSeries();
     }
 
+    public TmdbPageResult<TmdbSeries> popularSeries(int page) {
+        return client.popularSeries(page);
+    }
+
     public TmdbPageResult<TmdbSeries> topRatedSeries(int page) {
         return client.topRatedSeries(page);
     }

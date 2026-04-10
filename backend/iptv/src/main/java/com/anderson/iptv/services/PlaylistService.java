@@ -1,95 +1,107 @@
 package com.anderson.iptv.services;
 
-import com.anderson.iptv.config.AppProperties;
-import com.anderson.iptv.exception.PlaylistFetchException;
 import com.anderson.iptv.model.Channel;
-import com.anderson.iptv.model.Playlist;
-import com.anderson.iptv.parser.M3uParser;
-
-import lombok.extern.slf4j.Slf4j;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.core.io.buffer.DataBufferUtils;
-import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
-
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.*;
-import java.util.stream.Collectors;
-
 import com.anderson.iptv.model.CategoryGroup;
+import com.anderson.iptv.model.Playlist;
 
-@Slf4j
+import org.springframework.stereotype.Service;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.CacheEvict;
+
+import com.anderson.iptv.config.RedisConfiguration;
+
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+
 @Service
 public class PlaylistService {
 
-    private final WebClient webClient;
-    private final M3uParser m3uParser;
-    private final AppProperties props;
+    private final PlaylistCacheService playlistCacheService;
+    private final PlaylistMetrics metrics;
+    private final ChannelIndex channelIndex;
 
-    private volatile Playlist cache = null;
-
-    @Autowired
-    public PlaylistService(@Qualifier("genericWebClient") WebClient webClient,
-                           M3uParser m3uParser,
-                           AppProperties props) {
-        this.webClient = webClient;
-        this.m3uParser = m3uParser;
-        this.props = props;
+    public PlaylistService(PlaylistCacheService playlistCacheService,
+            PlaylistMetrics metrics,
+            ChannelIndex channelIndex) {
+        this.playlistCacheService = playlistCacheService;
+        this.metrics = metrics;
+        this.channelIndex = channelIndex;
     }
 
     public Playlist getPlaylist() {
-        if (cacheValid()) {
-            return cache;
+        metrics.recordRequest();
+        Playlist playlist;
+        try {
+            playlist = playlistCacheService.getPlaylist();
+        } catch (ClassCastException e) {
+            playlist = playlistCacheService.forceRefresh();
         }
-        return fetchAndCache();
+        if (channelIndex.getIndexByGroup().isEmpty() && playlist.getChannels() != null
+                && !playlist.getChannels().isEmpty()) {
+            channelIndex.rebuild(playlist);
+        }
+        return playlist;
     }
 
     public List<String> getGroups() {
-        return getPlaylist().getChannels().stream()
-                .map(Channel::getGroupTitle)
+        return channelIndex.getIndexByGroup().keySet().stream()
                 .filter(g -> g != null && !g.isBlank())
-                .distinct()
                 .sorted()
                 .toList();
     }
 
     public List<Channel> byGroup(String group) {
-        return getPlaylist().getChannels().stream()
-                .filter(c -> group.equalsIgnoreCase(c.getGroupTitle()))
-                .toList();
+        return channelIndex.getByGroup(group);
     }
 
     public List<Channel> search(String query) {
-        String q = query.toLowerCase();
-        return getPlaylist().getChannels().stream()
+        String q = query == null ? "" : query.toLowerCase();
+        ensureIndexReady();
+        return channelIndex.getAllChannels().stream()
                 .filter(c -> c.getName() != null && c.getName().toLowerCase().contains(q))
                 .toList();
     }
 
+    @CacheEvict(cacheNames = {
+            "iptv:movies:trending",
+            "iptv:movies:top-rated",
+            "iptv:movies:popular",
+            "iptv:movies:all",
+            "iptv:series:trending",
+            "iptv:series:top-rated",
+            "iptv:series:popular",
+            "iptv:series:playlist",
+            "iptv:series:all",
+            "iptv:live",
+            "iptv:search",
+            "iptv:playlist:categories",
+            "iptv:movies/channels"
+    }, allEntries = true)
     public Playlist forceRefresh() {
-        cache = null;
-        return fetchAndCache();
+        Playlist playlist = playlistCacheService.forceRefresh();
+        channelIndex.rebuild(playlist);
+        return playlist;
     }
 
+    @Cacheable(value = "iptv:playlist:categories", condition = "@cacheToggle.enabled()")
     public List<CategoryGroup> getGroupedCategories() {
-        // Agrupa os canais por categoria-pai
-        Map<String, List<Channel>> byParent = getPlaylist().getChannels().stream()
-                .filter(c -> c.getGroupTitle() != null && !c.getGroupTitle().isBlank())
-                .collect(Collectors.groupingBy(c -> extractParent(c.getGroupTitle())));
+        ensureIndexReady();
+
+        Map<String, List<Channel>> byParent = channelIndex.getIndexByParent();
+        if (byParent.isEmpty()) {
+            return List.of();
+        }
 
         return byParent.entrySet().stream()
+                .filter(entry -> entry.getKey() != null && !entry.getKey().isBlank())
                 .map(entry -> {
-                    String parent = entry.getKey();
+                    String parent = channelIndex.getParentDisplayName(entry.getKey());
                     List<Channel> channels = entry.getValue();
 
-                    // Subcategorias únicas e ordenadas dentro deste pai
                     List<String> subs = channels.stream()
                             .map(c -> extractSub(c.getGroupTitle()))
+                            .filter(s -> s != null && !s.isBlank())
                             .distinct()
                             .sorted()
                             .toList();
@@ -104,34 +116,41 @@ public class PlaylistService {
                 .toList();
     }
 
+    @Cacheable(
+            value = RedisConfiguration.MOVIES_CHANNELS_KEY,
+            key = "#sub == null || #sub.isBlank() ? #parent : #parent + ':' + #sub",
+            condition = "@cacheToggle.enabled()")
     public List<Channel> getChannelsByCategory(String parent, String sub) {
-        String fullGroup = sub == null || sub.isBlank()
-                ? parent
-                : parent + " | " + sub;
+        ensureIndexReady();
 
-        return getPlaylist().getChannels().stream()
-                .filter(c -> c.getGroupTitle() != null &&
-                             normalizeGroup(c.getGroupTitle()).equals(normalizeGroup(fullGroup)))
-                .toList();
-    }
-
-    public List<Channel> searchChannelsByCategory(String parent, String query){
-        String normalizedParent = normalizeGroup(parent);
-        String q = query.toLowerCase();
-        
-        return getPlaylist().getChannels().stream()
-                .filter(c -> c.getGroupTitle() != null
-                        && extractParent(c.getGroupTitle()).toLowerCase().equals(normalizedParent)
-                        && c.getName() != null
-                        && c.getName().toLowerCase().contains(q))
-                .toList();
-    }
-
-    private String extractParent(String group) {
-        if (group.contains("|")) {
-            return group.substring(0, group.indexOf("|")).trim();
+        if (parent == null || parent.isBlank()) {
+            return List.of();
         }
-        return "Outros";
+
+        if (sub == null || sub.isBlank()) {
+            return channelIndex.getByParent(parent);
+        }
+
+        String fullGroup = parent + " | " + sub;
+        return channelIndex.getByGroup(fullGroup);
+    }
+
+    public List<Channel> searchChannelsByCategory(String parent, String query) {
+        ensureIndexReady();
+
+        String q = query == null ? "" : query.toLowerCase();
+        return channelIndex.getByParent(parent).stream()
+                .filter(c -> c.getName() != null && c.getName().toLowerCase().contains(q))
+                .toList();
+    }
+
+    private void ensureIndexReady() {
+        if (channelIndex.getIndexByGroup().isEmpty()) {
+            Playlist playlist = playlistCacheService.getPlaylist();
+            if (playlist != null && playlist.getChannels() != null && !playlist.getChannels().isEmpty()) {
+                channelIndex.rebuild(playlist);
+            }
+        }
     }
 
     private String extractSub(String group) {
@@ -141,53 +160,4 @@ public class PlaylistService {
         return group.trim();
     }
 
-    private String normalizeGroup(String group) {
-        return group.toLowerCase().trim();
-    }
-
-
-    private boolean cacheValid() {
-        if (cache == null || cache.getFetchedAt() == null) {
-            return false;
-        }
-
-        long elapsed = Instant.now().toEpochMilli() - cache.getFetchedAt().toEpochMilli();
-        return elapsed < props.getM3u().getCacheTtlMS();
-    }
-
-    private Playlist fetchAndCache() {
-        String url = props.getM3u().buildUrl();
-        Path tempFile = null;
-
-        log.info("Buscando playlist M3U");
-
-        try {
-            tempFile = Files.createTempFile("playlist-", ".m3u");
-
-            DataBufferUtils.write(
-                    webClient.get()
-                            .uri(url)
-                            .retrieve()
-                            .bodyToFlux(DataBuffer.class),
-                    tempFile
-            ).block();
-
-            cache = m3uParser.parse(tempFile);
-            return cache;
-
-        } catch (Exception e) {
-            log.error("Erro ao buscar playlist", e);
-            throw new PlaylistFetchException(
-                    "Não foi possível buscar a playlist: " + e.getMessage(), e
-            );
-        } finally {
-            if (tempFile != null) {
-                try {
-                    Files.deleteIfExists(tempFile);
-                } catch (Exception ex) {
-                    log.warn("Não foi possível remover arquivo temporário: {}", ex.getMessage());
-                }
-            }
-        }
-    }
 }

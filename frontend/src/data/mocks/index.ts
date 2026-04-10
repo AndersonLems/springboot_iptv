@@ -364,9 +364,9 @@ export const mockCategories: Category[] = [
     ),
   },
   {
-    name: "Thriller & Suspense",
+    name: "Terror & Suspense",
     items: allMedia.filter((i) =>
-      i.genres?.some((g) => ["Thriller", "Suspense", "Mistério"].includes(g)),
+      i.genres?.some((g) => ["Terror", "Suspense", "Mistério"].includes(g)),
     ),
   },
   {

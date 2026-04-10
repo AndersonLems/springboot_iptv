@@ -1,29 +1,29 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { authService } from '@/services/auth';
 
 describe('Auth Service', () => {
-  it('login com admin/admin deve retornar sessão válida', async () => {
-    const session = await authService.login('admin', 'admin');
-    expect(session).toBeDefined();
-    expect(session.user).toBeDefined();
-    expect(session.user.username).toBe('admin');
-    expect(session.token).toBeDefined();
-    expect(typeof session.token).toBe('string');
+  it('login chama POST /api/auth/login com body correto', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    await authService.login('user1', 'pass1');
+    const [url, options] = fetchSpy.mock.calls[0];
+    expect(new URL(url as string).pathname).toBe('/api/auth/login');
+    const body = JSON.parse((options as RequestInit).body as string);
+    expect(body).toEqual({ username: 'user1', password: 'pass1' });
+    fetchSpy.mockRestore();
   });
 
-  it('login com credenciais inválidas deve lançar erro', async () => {
-    await expect(authService.login('wrong', 'wrong')).rejects.toThrow('Credenciais inválidas');
+  it('login salva sessão no localStorage em sucesso', async () => {
+    localStorage.clear();
+    await authService.login('user2', 'pass2');
+    const stored = localStorage.getItem('stream_auth_session');
+    expect(stored).toContain('user2');
   });
 
-  it('login deve retornar user com campos obrigatórios', async () => {
-    const session = await authService.login('admin', 'admin');
-    expect(session.user.id).toBeDefined();
-    expect(session.user.displayName).toBeDefined();
-    expect(session.user.email).toBeDefined();
-    expect(session.user.avatar).toBeDefined();
-  });
-
-  it('logout não deve lançar erro', async () => {
-    await expect(authService.logout()).resolves.toBeUndefined();
+  it('login lança erro em 401', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response('Unauthorized', { status: 401 }),
+    );
+    await expect(authService.login('bad', 'bad')).rejects.toThrow('Credenciais invalidas');
+    fetchSpy.mockRestore();
   });
 });

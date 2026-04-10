@@ -1,10 +1,23 @@
 import '@testing-library/jest-dom';
-import { afterEach, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { setupServer } from 'msw/node';
+import { handlers } from './mocks/handlers';
+
+const server = setupServer(...handlers);
+
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: 'error' });
+});
 
 // Limpa o DOM após cada teste
 afterEach(() => {
+  server.resetHandlers();
   cleanup();
+});
+
+afterAll(() => {
+  server.close();
 });
 
 // Mock do localStorage

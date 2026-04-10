@@ -1,6 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { Search, User, Menu, X, Play } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 const navLinks = [
@@ -8,11 +9,14 @@ const navLinks = [
   { to: '/series' as const, label: 'Séries' },
   { to: '/movies' as const, label: 'Filmes' },
   { to: '/channels' as const, label: 'Canais' },
+  { to: '/favorites' as const, label: 'Favoritos' },
+  { to: '/history' as const, label: 'Historico' },
 ];
 
 export function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 50);
@@ -43,6 +47,14 @@ export function Header() {
           </nav>
         </div>
         <div className="flex items-center gap-3">
+          {import.meta.env.DEV && (
+            <button
+              onClick={() => queryClient.clear()}
+              className="hidden sm:inline-flex text-xs text-muted-foreground hover:text-foreground transition-colors border border-border rounded-md px-2 py-1"
+            >
+              Limpar cache
+            </button>
+          )}
           <ThemeToggle />
           <Link to="/search" className="text-muted-foreground hover:text-foreground transition-colors">
             <Search className="h-5 w-5" />

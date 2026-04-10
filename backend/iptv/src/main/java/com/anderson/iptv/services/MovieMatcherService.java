@@ -1,20 +1,25 @@
 package com.anderson.iptv.services;
 
-import com.anderson.iptv.model.Channel;
 import com.anderson.iptv.model.EnrichedMovie;
 import com.anderson.iptv.model.EnrichedMovie.StreamOption;
 import com.anderson.iptv.model.EnrichedMovie.StreamQuality;
-import com.anderson.iptv.model.Playlist;
+import com.anderson.iptv.model.EnrichedMovieListCache;
 import com.anderson.iptv.model.tmdb.TmdbMovie;
 import com.anderson.iptv.model.tmdb.TmdbPageResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
-import java.text.Normalizer;
+import com.anderson.iptv.model.Channel;
+import com.anderson.iptv.util.TextNormalizer;
+
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -23,33 +28,42 @@ public class MovieMatcherService {
 
     private final TmdbService tmdbService;
     private final PlaylistService playlistService;
+    private final ChannelIndex channelIndex;
 
     private static final String FILMES_PARENT = "filmes";
 
-    public Mono<List<EnrichedMovie>> trendingWithStreams() {
+    @Cacheable(value = "iptv:movies:trending", key = "#root.methodName", condition = "@cacheToggle.enabled()")
+    public Mono<EnrichedMovieListCache> trendingWithStreams() {
         return Mono.fromCallable(() -> {
             TmdbPageResult<TmdbMovie> tmdb = tmdbService.trendingMovies();
-            Playlist playlist = playlistService.getPlaylist();
-            List<Channel> movieChannels = filterMovieChannels(playlist);
-            return enrich(tmdb.getResults(), movieChannels);
+            List<Channel> movieChannels = getMovieChannels();
+            List<EnrichedMovie> movies = enrich(tmdb.getResults(), movieChannels)
+                    .stream()
+                    .filter(EnrichedMovie::isAvailable)
+                    .toList();
+            return new EnrichedMovieListCache(movies);
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
+    @Cacheable(value = "iptv:movies:top-rated", key = "#root.methodName + ':' + #page", condition = "@cacheToggle.enabled()")
     public Mono<List<EnrichedMovie>> topRatedWithStreams(int page) {
         return Mono.fromCallable(() -> {
             TmdbPageResult<TmdbMovie> tmdb = tmdbService.topRatedMovies(page);
-            Playlist playlist = playlistService.getPlaylist();
-            List<Channel> movieChannels = filterMovieChannels(playlist);
-            return enrich(tmdb.getResults(), movieChannels);
+            List<Channel> movieChannels = getMovieChannels();
+            return enrich(tmdb.getResults(), movieChannels).stream()
+                    .filter(EnrichedMovie::isAvailable)
+                    .toList();
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
+    @Cacheable(value = "iptv:movies:popular", key = "#root.methodName + ':' + #page", condition = "@cacheToggle.enabled()")
     public Mono<List<EnrichedMovie>> popularWithStreams(int page) {
         return Mono.fromCallable(() -> {
             TmdbPageResult<TmdbMovie> tmdb = tmdbService.popularMovies(page);
-            Playlist playlist = playlistService.getPlaylist();
-            List<Channel> movieChannels = filterMovieChannels(playlist);
-            return enrich(tmdb.getResults(), movieChannels);
+            List<Channel> movieChannels = getMovieChannels();
+            return enrich(tmdb.getResults(), movieChannels).stream()
+                    .filter(EnrichedMovie::isAvailable)
+                    .toList();
         }).subscribeOn(Schedulers.boundedElastic());
     }
 
@@ -63,19 +77,20 @@ public class MovieMatcherService {
     }
 
     private List<StreamOption> findStreams(String tmdbTitle, List<Channel> channels) {
-        String normalizedTitle = normalize(tmdbTitle);
+        String normalizedTitle = TextNormalizer.normalizeTitle(tmdbTitle);
         if (normalizedTitle.length() < 4) {
             log.warn("Título muito curto após normalização, pulando match: '{}'", tmdbTitle);
             return List.of();
         }
-        return channels.stream()
-                .filter(c -> {
-                    if (c.getName() == null) return false;
-                    String normalizedChannel = normalize(c.getName());
-                    return normalizedChannel.equals(normalizedTitle)
-                            || normalizedChannel.startsWith(normalizedTitle + " ")
-                            || normalizedChannel.startsWith(normalizedTitle + ":");
-                })
+        Map<String, List<Channel>> index = channelIndex.getIndexByNormalizedName();
+        List<Channel> exact = index.getOrDefault(normalizedTitle, List.of());
+        Stream<Channel> prefixMatches = index.entrySet().stream()
+                .filter(entry -> entry.getKey().startsWith(normalizedTitle + " ")
+                        || entry.getKey().startsWith(normalizedTitle + ":"))
+                .flatMap(entry -> entry.getValue().stream());
+
+        return Stream.concat(exact.stream(), prefixMatches)
+                .distinct()
                 .map(this::toStreamOption)
                 .toList();
     }
@@ -107,38 +122,32 @@ public class MovieMatcherService {
                 .build();
     }
 
-    private List<Channel> filterMovieChannels(Playlist playlist) {
-        return playlist.getChannels().stream()
-                .filter(c -> c.getGroupTitle() != null &&
-                             c.getGroupTitle().toLowerCase().startsWith(FILMES_PARENT))
-                .toList();
-    }
-
-    private String normalize(String input) {
-        if (input == null) return "";
-        String s = input.toLowerCase();
-        s = Normalizer.normalize(s, Normalizer.Form.NFD);
-        s = s.replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
-        s = s.replaceAll("\\[.*?\\]", "");
-        s = s.replaceAll("\\(.*?\\)", "");
-        s = s.replaceAll("\\b4k\\b", "");
-        s = s.replaceAll("\\bhdr\\b", "");
-        s = s.replaceAll("\\bdublado\\b", "");
-        s = s.replaceAll("\\bdubbed\\b", "");
-        s = s.replaceAll("\\blegenado\\b", "");
-        s = s.replaceAll("\\blegendado\\b", "");
-        s = s.replaceAll("[^a-z0-9\\s]", " ");
-        s = s.replaceAll("\\s+", " ").trim();
-        return s;
+    private List<Channel> getMovieChannels() {
+        Map<String, List<Channel>> byGroup = channelIndex.getIndexByGroup();
+        List<Channel> result = new java.util.ArrayList<>();
+        byGroup.forEach((group, list) -> {
+            if (group != null && group.startsWith(FILMES_PARENT)) {
+                result.addAll(list);
+            }
+        });
+        if (!result.isEmpty()) {
+            return result;
+        }
+        return playlistService.getPlaylist().getChannels();
     }
 
     private StreamQuality inferQuality(String name) {
-        if (name == null) return StreamQuality.OUTRO;
+        if (name == null)
+            return StreamQuality.OUTRO;
         String n = name.toUpperCase();
-        if (n.contains("4K"))                             return StreamQuality.UHD_4K;
-        if (n.contains("HDR"))                            return StreamQuality.HDR;
-        if (n.contains("[L]") || n.contains("LEGENDADO")) return StreamQuality.LEGENDADO;
-        if (n.contains("DUBLADO"))                        return StreamQuality.DUBLADO;
+        if (n.contains("4K"))
+            return StreamQuality.UHD_4K;
+        if (n.contains("HDR"))
+            return StreamQuality.HDR;
+        if (n.contains("[L]") || n.contains("LEGENDADO"))
+            return StreamQuality.LEGENDADO;
+        if (n.contains("DUBLADO"))
+            return StreamQuality.DUBLADO;
         return StreamQuality.DUBLADO;
     }
 }

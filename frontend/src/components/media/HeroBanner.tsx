@@ -17,7 +17,7 @@ export function HeroBanner({ hero, onPlay }: HeroBannerProps) {
     <div className="relative h-[70vh] md:h-[85vh] w-full overflow-hidden">
       <div className="absolute inset-0">
         <img
-          src={heroBackdrop}
+          src={item.backdrop || heroBackdrop}
           alt={item.title}
           className="w-full h-full object-cover"
           width={1920}

@@ -42,6 +42,13 @@ public class TmdbController {
                 .subscribeOn(Schedulers.boundedElastic());
     }
 
+        @GetMapping("/series/popular")
+        public Mono<TmdbPageResult<TmdbSeries>> seriesPopular(
+                        @RequestParam(defaultValue = "1") int page) {
+                return Mono.fromCallable(() -> service.popularSeries(page))
+                                .subscribeOn(Schedulers.boundedElastic());
+        }
+
     @GetMapping("/series/top-rated")
     public Mono<TmdbPageResult<TmdbSeries>> seriesTopRated(
             @RequestParam(defaultValue = "1") int page) {

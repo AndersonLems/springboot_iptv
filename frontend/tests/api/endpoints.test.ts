@@ -1,6 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import { API_ENDPOINTS } from '@/services/api/endpoints';
 
+function assertAllEndpointsStartWithSlash(value: unknown) {
+  if (typeof value === 'string') {
+    expect(value).toMatch(/^\//);
+    return;
+  }
+
+  if (typeof value === 'function') {
+    // Tenta gerar um endpoint com args dummy (para endpoints parametrizados)
+    const fn = value as (...args: any[]) => unknown;
+    const arity = fn.length;
+    const dummyArgs = Array.from({ length: arity }).map((_, idx) => `x${idx + 1}`);
+    assertAllEndpointsStartWithSlash(fn(...dummyArgs));
+    return;
+  }
+
+  if (value && typeof value === 'object') {
+    Object.values(value as Record<string, unknown>).forEach(assertAllEndpointsStartWithSlash);
+  }
+}
+
 describe('API Endpoints', () => {
   it('deve ter endpoints de autenticação', () => {
     expect(API_ENDPOINTS.login).toBe('/auth/login');
@@ -23,8 +43,6 @@ describe('API Endpoints', () => {
   });
 
   it('todos os endpoints devem começar com /', () => {
-    Object.values(API_ENDPOINTS).forEach(endpoint => {
-      expect(endpoint).toMatch(/^\//);
-    });
+    assertAllEndpointsStartWithSlash(API_ENDPOINTS);
   });
 });

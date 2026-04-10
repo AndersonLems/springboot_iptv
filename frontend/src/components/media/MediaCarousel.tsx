@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useRef } from 'react';
+import { Fragment, useRef, type ReactNode } from 'react';
 import type { MediaItem } from '@/types/media';
 import { MediaCard } from './MediaCard';
 
@@ -9,9 +9,19 @@ interface MediaCarouselProps {
   onPlay: (item: MediaItem) => void;
   myListIds?: string[];
   onToggleList?: (item: MediaItem) => void;
+  titleAction?: ReactNode;
+  renderItem?: (item: MediaItem) => ReactNode;
 }
 
-export function MediaCarousel({ title, items, onPlay, myListIds = [], onToggleList }: MediaCarouselProps) {
+export function MediaCarousel({
+  title,
+  items,
+  onPlay,
+  myListIds = [],
+  onToggleList,
+  titleAction,
+  renderItem,
+}: MediaCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (direction: 'left' | 'right') => {
@@ -24,7 +34,10 @@ export function MediaCarousel({ title, items, onPlay, myListIds = [], onToggleLi
 
   return (
     <section className="mb-8">
-      <h2 className="text-lg md:text-xl font-semibold text-foreground mb-3 px-4 md:px-12">{title}</h2>
+      <div className="flex items-center justify-between gap-4 mb-3 px-4 md:px-12">
+        <h2 className="text-lg md:text-xl font-semibold text-foreground">{title}</h2>
+        {titleAction}
+      </div>
       <div className="group/carousel relative">
         <button
           onClick={() => scroll('left')}
@@ -37,13 +50,18 @@ export function MediaCarousel({ title, items, onPlay, myListIds = [], onToggleLi
           className="flex gap-3 overflow-x-auto scrollbar-hide px-4 md:px-12 scroll-smooth pb-2"
         >
           {items.map(item => (
-            <MediaCard
-              key={item.id}
-              item={item}
-              onPlay={onPlay}
-              isInList={myListIds.includes(item.id)}
-              onToggleList={onToggleList}
-            />
+            <Fragment key={item.id}>
+              {renderItem ? (
+                renderItem(item)
+              ) : (
+                <MediaCard
+                  item={item}
+                  onPlay={onPlay}
+                  isInList={myListIds.includes(item.id)}
+                  onToggleList={onToggleList}
+                />
+              )}
+            </Fragment>
           ))}
         </div>
         <button

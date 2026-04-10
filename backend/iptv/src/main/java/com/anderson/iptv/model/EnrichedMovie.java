@@ -1,12 +1,18 @@
 package com.anderson.iptv.model;
 
 import com.anderson.iptv.model.tmdb.TmdbMovie;
+
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.util.List;
 
 @Data
 @Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class EnrichedMovie {
 
     private Long tmdbId;
@@ -24,6 +30,8 @@ public class EnrichedMovie {
 
     @Data
     @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class StreamOption {
         private String name;
         private String streamUrl;

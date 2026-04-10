@@ -11,6 +11,19 @@ import lombok.Data;
 public class AppProperties {
     private M3u m3u = new M3u();
     private Tmdb tmdb = new Tmdb();
+    private Epg epg = new Epg();
+
+    public M3u getM3u() {
+        return m3u;
+    }
+
+    public Tmdb getTmdb() {
+        return tmdb;
+    }
+
+    public Epg getEpg() {
+        return epg;
+    }
 
     @Data
     public static class M3u {
@@ -35,5 +48,10 @@ public class AppProperties {
         private String apiKey;
         private String language = "pt-BR";
         private String region = "BR";
+    }
+
+    @Data
+    public static class Epg {
+        private String url;
     }
 }
