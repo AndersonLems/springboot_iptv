@@ -22,4 +22,7 @@ public class HealthResponse {
     private Instant lastParsedAt;
     private long parseTimeMs;
     private String cacheHitRate;
+    private String m3uHost;
+    private String m3uUsernameMasked;
+    private boolean m3uPasswordSet;
 }

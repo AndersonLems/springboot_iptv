@@ -1,5 +1,6 @@
 package com.anderson.iptv.services;
 
+import com.anderson.iptv.config.AppProperties;
 import com.anderson.iptv.model.HealthResponse;
 
 import java.util.Locale;
@@ -15,15 +16,18 @@ public class HealthService {
     private final ChannelIndex channelIndex;
     private final PlaylistMetrics metrics;
     private final RedisConnectionFactory redisConnectionFactory;
+    private final AppProperties props;
 
     public HealthService(PlaylistService playlistService,
             ChannelIndex channelIndex,
             PlaylistMetrics metrics,
-            RedisConnectionFactory redisConnectionFactory) {
+            RedisConnectionFactory redisConnectionFactory,
+            AppProperties props) {
         this.playlistService = playlistService;
         this.channelIndex = channelIndex;
         this.metrics = metrics;
         this.redisConnectionFactory = redisConnectionFactory;
+        this.props = props;
     }
 
     public HealthResponse getHealth() {
@@ -48,6 +52,9 @@ public class HealthService {
                 .lastParsedAt(metrics.getLastParsedAt())
                 .parseTimeMs(metrics.getParseTimeMs())
                 .cacheHitRate(String.format("%.0f%%", metrics.getHitRatePercent()))
+                .m3uHost(safeValue(props.getM3u().getHost()))
+                .m3uUsernameMasked(maskUsername(props.getM3u().getUsername()))
+                .m3uPasswordSet(hasValue(props.getM3u().getPassword()))
                 .build();
     }
 
@@ -66,5 +73,23 @@ public class HealthService {
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private boolean hasValue(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private String safeValue(String value) {
+        return hasValue(value) ? value : "(vazio)";
+    }
+
+    private String maskUsername(String value) {
+        if (!hasValue(value)) {
+            return "(vazio)";
+        }
+        if (value.length() <= 3) {
+            return value.charAt(0) + "***";
+        }
+        return value.substring(0, 3) + "***";
     }
 }

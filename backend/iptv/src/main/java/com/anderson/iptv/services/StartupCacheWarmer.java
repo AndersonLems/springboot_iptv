@@ -10,6 +10,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import com.anderson.iptv.config.CacheToggle;
+import com.anderson.iptv.config.AppProperties;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +27,7 @@ public class StartupCacheWarmer implements ApplicationRunner {
     private final ChannelIndex channelIndex;
     private final ApplicationContext applicationContext;
     private final CacheToggle cacheToggle;
+    private final AppProperties props;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -38,6 +40,11 @@ public class StartupCacheWarmer implements ApplicationRunner {
         if (applicationContext instanceof ConfigurableApplicationContext ctx && !ctx.isActive()) {
             return;
         }
+        log.info(
+                "M3U config: host='{}', username='{}', password={}",
+                safeValue(props.getM3u().getHost()),
+                maskUsername(props.getM3u().getUsername()),
+                hasValue(props.getM3u().getPassword()) ? "SET" : "EMPTY");
         if (!cacheToggle.enabled()) {
             log.info("Cache warmup skipped: cache disabled for devtools");
             return;
@@ -74,6 +81,24 @@ public class StartupCacheWarmer implements ApplicationRunner {
         } catch (Exception e) {
             log.warn("Cache warmup skipped: {}", e.getMessage());
         }
+    }
+
+    private boolean hasValue(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private String safeValue(String value) {
+        return hasValue(value) ? value : "(vazio)";
+    }
+
+    private String maskUsername(String value) {
+        if (!hasValue(value)) {
+            return "(vazio)";
+        }
+        if (value.length() <= 3) {
+            return value.charAt(0) + "***";
+        }
+        return value.substring(0, 3) + "***";
     }
 
     private record CategoryGroupSnapshot(String parent, List<String> subs) {}
